@@ -14,6 +14,6 @@ A REST API endpoint that classifies gender based on a given name by integrating 
 ## API Endpoint
 
 ### Base URL
-`https://your-deployed-url.com`
+https://hng-14-omega.vercel.app/api/classify?name=mark
 
 ### Endpoint
