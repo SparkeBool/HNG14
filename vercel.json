@@ -7,8 +7,9 @@
     }
   ],
   "routes": [
+    
     {
-      "src": "/api/classify",
+      "src": "/api/profiles",
       "dest": "/index.js"
     }
   ]
