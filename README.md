@@ -221,21 +221,21 @@ All errors follow this structure:
 ### Prerequisites
 
 - Node.js (v18 or higher)
-- MongoDB Atlas account (free tier)
+- MongoDB Atlas account 
 - npm or yarn
 
 ### Setup Instructions
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/profile-intelligence-api.git
-cd profile-intelligence-api
+git clone https://github.com/SparkeBool/HNG14.git
+cd HNG14
 
 # Install dependencies
 npm install
 
 # Create .env file
-echo "MONGODB_URI=your_mongodb_connection_string" > .env
+echo "MONGO_URI=your_mongodb_connection_string" > .env
 echo "PORT=3000" >> .env
 
 # Start development server
