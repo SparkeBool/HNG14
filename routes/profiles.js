@@ -4,7 +4,7 @@ import { v7 as uuidv7 } from "uuid";
 import Profile from "../models/Profile.js";
 
 const router = express.Router();
-console.log("5. Profiles route file loaded");
+
 // Helper: Determine age group
 function getAgeGroup(age) {
   if (age >= 0 && age <= 12) return "child";
@@ -25,13 +25,12 @@ function validateName(name) {
   return { valid: true };
 }
 
-// POST /api/profiles
+// ==================== 1. POST /api/profiles ====================
 router.post("/", async (req, res) => {
-    console.log("6. POST /api/profiles route was called"); 
   try {
     const { name } = req.body;
 
-    // 1. Input validation
+    // Input validation
     const validation = validateName(name);
     if (!validation.valid) {
       return res.status(validation.status).json({
@@ -42,7 +41,7 @@ router.post("/", async (req, res) => {
 
     const normalizedName = name.toLowerCase().trim();
 
-    // 2. Idempotency check
+    // Idempotency check
     const existingProfile = await Profile.findOne({ name: normalizedName });
     if (existingProfile) {
       return res.status(200).json({
@@ -63,47 +62,47 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // 3. Call external APIs in parallel
+    // Call external APIs in parallel
     const [genderizeRes, agifyRes, nationalizeRes] = await Promise.all([
-      axios.get(`https://api.genderize.io/?name=${encodeURIComponent(normalizedName)}`, { timeout: 15000 }),
-      axios.get(`https://api.agify.io/?name=${encodeURIComponent(normalizedName)}`, { timeout: 15000 }),
-      axios.get(`https://api.nationalize.io/?name=${encodeURIComponent(normalizedName)}`, { timeout: 15000 })
+      axios.get(`https://api.genderize.io/?name=${encodeURIComponent(normalizedName)}`, { timeout: 10000 }),
+      axios.get(`https://api.agify.io/?name=${encodeURIComponent(normalizedName)}`, { timeout: 10000 }),
+      axios.get(`https://api.nationalize.io/?name=${encodeURIComponent(normalizedName)}`, { timeout: 10000 })
     ]);
 
     const genderData = genderizeRes.data;
     const ageData = agifyRes.data;
     const countryData = nationalizeRes.data;
 
-    // 4. Edge case checks
+    // Edge case checks - Return 502 with status as string "502"
     if (genderData.gender === null || genderData.count === 0) {
-      return res.status(400).json({
-        status: "error",
-        message: "Genderize: No prediction available for this name"
+      return res.status(502).json({
+        status: "502",
+        message: "Genderize returned an invalid response"
       });
     }
 
     if (ageData.age === null) {
-      return res.status(400).json({
-        status: "error",
-        message: "Agify: No age prediction available for this name"
+      return res.status(502).json({
+        status: "502",
+        message: "Agify returned an invalid response"
       });
     }
 
     if (!countryData.country || countryData.country.length === 0) {
-      return res.status(400).json({
-        status: "error",
-        message: "Nationalize: No country prediction available for this name"
+      return res.status(502).json({
+        status: "502",
+        message: "Nationalize returned an invalid response"
       });
     }
 
-    // 5. Process data
+    // Process data
     const sample_size = genderData.count;
     const age_group = getAgeGroup(ageData.age);
     const topCountry = countryData.country.reduce((prev, current) => 
       (prev.probability > current.probability) ? prev : current
     );
 
-    // 6. Create record with UUID v7
+    // Create record with UUID v7
     const newProfile = new Profile({
       id: uuidv7(),
       name: normalizedName,
@@ -119,7 +118,7 @@ router.post("/", async (req, res) => {
 
     await newProfile.save();
 
-    // 7. Return success response
+    // Return success response (201 Created)
     return res.status(201).json({
       status: "success",
       data: {
@@ -141,11 +140,125 @@ router.post("/", async (req, res) => {
     
     if (error.code === "ECONNREFUSED" || error.code === "ETIMEDOUT") {
       return res.status(502).json({
-        status: "error",
+        status: "502",
         message: "External API service unavailable"
       });
     }
     
+    return res.status(500).json({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
+});
+
+// ==================== 2. GET /api/profiles/{id} ====================
+router.get("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const profile = await Profile.findOne({ id: id });
+    
+    if (!profile) {
+      return res.status(404).json({
+        status: "error",
+        message: "Profile not found"
+      });
+    }
+    
+    // Returns FULL profile with all fields
+    return res.status(200).json({
+      status: "success",
+      data: {
+        id: profile.id,
+        name: profile.name,
+        gender: profile.gender,
+        gender_probability: profile.gender_probability,
+        sample_size: profile.sample_size,
+        age: profile.age,
+        age_group: profile.age_group,
+        country_id: profile.country_id,
+        country_probability: profile.country_probability,
+        created_at: profile.created_at.toISOString()
+      }
+    });
+    
+  } catch (error) {
+    console.error("Error fetching profile:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
+});
+
+// ==================== 3. GET /api/profiles (with filters) ====================
+router.get("/", async (req, res) => {
+  try {
+    const { gender, country_id, age_group } = req.query;
+    
+    // Build filter object
+    let filter = {};
+    
+    if (gender) {
+      filter.gender = gender.toLowerCase();
+    }
+    
+    if (country_id) {
+      filter.country_id = country_id.toUpperCase();
+    }
+    
+    if (age_group) {
+      filter.age_group = age_group.toLowerCase();
+    }
+    
+    // Query database
+    const profiles = await Profile.find(filter).sort({ created_at: -1 });
+    
+    // Returns SIMPLIFIED data array (only 6 fields as required)
+    const dataArray = profiles.map(profile => ({
+      id: profile.id,
+      name: profile.name,
+      gender: profile.gender,
+      age: profile.age,
+      age_group: profile.age_group,
+      country_id: profile.country_id
+    }));
+    
+    return res.status(200).json({
+      status: "success",
+      count: dataArray.length,
+      data: dataArray
+    });
+    
+  } catch (error) {
+    console.error("Error fetching profiles:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
+});
+
+// ==================== 4. DELETE /api/profiles/{id} ====================
+router.delete("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await Profile.findOneAndDelete({ id: id });
+    
+    if (!result) {
+      return res.status(404).json({
+        status: "error",
+        message: "Profile not found"
+      });
+    }
+    
+    // Returns 204 No Content with NO body
+    return res.status(204).send();
+    
+  } catch (error) {
+    console.error("Error deleting profile:", error);
     return res.status(500).json({
       status: "error",
       message: "Internal server error"

@@ -7,9 +7,8 @@
     }
   ],
   "routes": [
-    
     {
-      "src": "/api/profiles",
+      "src": "/api/profiles(/.*)?",
       "dest": "/index.js"
     }
   ]

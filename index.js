@@ -8,12 +8,12 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-console.log("1. Index.js loaded");
+
 
 // Middleware
 app.use(cors({ origin: "*" }));
 app.use(express.json());
-console.log("2. Middleware configured");
+
 
 // MongoDB connection
 await mongoose.connect(process.env.MONGO_URI)
@@ -22,7 +22,7 @@ await mongoose.connect(process.env.MONGO_URI)
 
 // Routes
 app.use("/api/profiles", profileRoutes);
-console.log("3. Routes registered at /api/profiles");
+
 
 // Health check
 app.get("/", (req, res) => {
