@@ -13,22 +13,47 @@ const profileSchema = new mongoose.Schema({
     lowercase: true,
     trim: true
   },
-  gender: String,
-  gender_probability: Number,
-  sample_size: Number,
-  age: Number,
+  gender: {
+    type: String,
+    enum: ["male", "female"]
+  },
+  gender_probability: {
+    type: Number,
+    min: 0,
+    max: 1
+  },
+  age: {
+    type: Number,
+    min: 0
+  },
   age_group: {
     type: String,
     enum: ["child", "teenager", "adult", "senior"]
   },
-  country_id: String,
-  country_probability: Number,
+  country_id: {
+    type: String,
+    uppercase: true,
+    length: 2
+  },
+  country_name: String,
+  country_probability: {
+    type: Number,
+    min: 0,
+    max: 1
+  },
   created_at: {
     type: Date,
     default: Date.now
   }
-}, {
-  timestamps: false
 });
+
+// INDEXES for performance
+profileSchema.index({ gender: 1 });
+profileSchema.index({ age_group: 1 });
+profileSchema.index({ country_id: 1 });
+profileSchema.index({ age: 1 });
+profileSchema.index({ created_at: -1 });
+profileSchema.index({ gender_probability: -1 });
+profileSchema.index({ country_probability: -1 });
 
 export default mongoose.model("Profile", profileSchema);

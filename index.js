@@ -9,32 +9,30 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-
-// Middleware
 app.use(cors({ origin: "*" }));
 app.use(express.json());
 
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("Connected to MongoDB"))
+  .catch((err) => console.error("MongoDB connection error:", err));
 
-// MongoDB connection
-await mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch((error) => console.error('Error connecting to MongoDB', error));
-
-// Routes
 app.use("/api/profiles", profileRoutes);
 
-
-// Health check
 app.get("/", (req, res) => {
-  res.json({ message: "API is running. Use POST /api/profiles with { name: 'yourname' }" });
+  res.json({
+    message: "Intelligence Query Engine API",
+    endpoints: {
+      create: "POST /api/profiles",
+      getAll: "GET /api/profiles?gender=&age_group=&country_id=&min_age=&max_age=&min_gender_probability=&min_country_probability=&sort_by=&order=&page=&limit=",
+      search: "GET /api/profiles/search?q=young males from nigeria",
+      getById: "GET /api/profiles/{id}",
+      delete: "DELETE /api/profiles/{id}"
+    }
+  });
 });
-
-// Start server (for local development)
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`📍 POST http://localhost:${PORT}/api/profiles`);
 });
 
-// Export for Vercel serverless
 export default app;

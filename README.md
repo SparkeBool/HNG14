@@ -1,173 +1,148 @@
+# Intelligence Query Engine
 
-# Profile Intelligence API
+A queryable API for demographic intelligence with advanced filtering, sorting, pagination, and natural language search.
 
-## Overview
+## Base URL
 
-A REST API that enriches a person's name using third-party intelligence APIs (Genderize, Agify, Nationalize), processes the data, stores it in a database, and provides retrieval and management endpoints. The API handles duplicate data intelligently through idempotency and supports filtering for advanced queries.
+https://hng-14-omega.vercel.app/
 
-## Features
+## Endpoints
 
-- Name enrichment using Genderize, Agify, and Nationalize APIs
-- Age group classification (child, teenager, adult, senior)
-- Country selection based on highest probability
-- Persistent storage in MongoDB with UUID v7 identifiers
-- Idempotency: duplicate name submissions return existing data without creating new records
-- Multiple endpoints: create, read (by ID, with filters), and delete profiles
-- CORS enabled for cross-origin requests
-- Comprehensive error handling with appropriate HTTP status codes
+### GET /api/profiles
 
-## API Endpoints
-
-### Base URL
-
-`https://your-app.vercel.app` (replace with your actual deployed URL)
-
-### 1. Create Profile
-
-`POST /api/profiles`
-
-Creates a new intelligence profile for a given name.
-
-**Request Body:**
-```json
-{
-  "name": "ella"
-}
-```
-
-**Success Response (201 Created):**
-```json
-{
-  "status": "success",
-  "data": {
-    "id": "b3f9c1e2-7d4a-4c91-9c2a-1f0a8e5b6d12",
-    "name": "ella",
-    "gender": "female",
-    "gender_probability": 0.99,
-    "sample_size": 1234,
-    "age": 46,
-    "age_group": "adult",
-    "country_id": "DRC",
-    "country_probability": 0.85,
-    "created_at": "2026-04-01T12:00:00Z"
-  }
-}
-```
-
-**Duplicate Name Response (200 OK):**
-```json
-{
-  "status": "success",
-  "message": "Profile already exists",
-  "data": {
-    "id": "b3f9c1e2-7d4a-4c91-9c2a-1f0a8e5b6d12",
-    "name": "ella",
-    "gender": "female",
-    "gender_probability": 0.99,
-    "sample_size": 1234,
-    "age": 46,
-    "age_group": "adult",
-    "country_id": "DRC",
-    "country_probability": 0.85,
-    "created_at": "2026-04-01T12:00:00Z"
-  }
-}
-```
-
-### 2. Get Profile by ID
-
-`GET /api/profiles/{id}`
-
-Retrieves a single profile using its UUID v7 identifier.
-
-**Success Response (200 OK):**
-```json
-{
-  "status": "success",
-  "data": {
-    "id": "b3f9c1e2-7d4a-4c91-9c2a-1f0a8e5b6d12",
-    "name": "emmanuel",
-    "gender": "male",
-    "gender_probability": 0.99,
-    "sample_size": 1234,
-    "age": 25,
-    "age_group": "adult",
-    "country_id": "NG",
-    "country_probability": 0.85,
-    "created_at": "2026-04-01T12:00:00Z"
-  }
-}
-```
-
-**Error Response (404 Not Found):**
-```json
-{
-  "status": "error",
-  "message": "Profile not found"
-}
-```
-
-### 3. Get All Profiles with Filters
-
-`GET /api/profiles?gender={gender}&country_id={country_id}&age_group={age_group}`
-
-Retrieves a list of all stored profiles. Supports optional case-insensitive query parameters.
+Advanced filtering with sorting and pagination.
 
 **Query Parameters:**
+
 - `gender` - male, female
-- `country_id` - Two-letter country code (e.g., NG, US, DRC)
 - `age_group` - child, teenager, adult, senior
+- `country_id` - ISO code (NG, US, KE)
+- `min_age` - Minimum age
+- `max_age` - Maximum age
+- `min_gender_probability` - Minimum confidence (0-1)
+- `min_country_probability` - Minimum confidence (0-1)
+- `sort_by` - age, created_at, gender_probability
+- `order` - asc, desc
+- `page` - Page number (default: 1)
+- `limit` - Items per page (default: 10, max: 50)
 
-**Examples:**
+**Example:**
+
 ```
-GET /api/profiles
-GET /api/profiles?gender=male
-GET /api/profiles?country_id=NG
-GET /api/profiles?age_group=adult
-GET /api/profiles?gender=male&country_id=US
+GET /api/profiles?gender=male&country_id=NG&min_age=25&sort_by=age&order=desc&page=1&limit=10
 ```
 
- Success Response (200 OK):**
+**Response:**
+
 ```json
 {
   "status": "success",
-  "count": 2,
+  "page": 1,
+  "limit": 10,
+  "total": 2026,
   "data": [
     {
-      "id": "id-1",
+      "id": "uuid",
       "name": "emmanuel",
       "gender": "male",
       "age": 25,
       "age_group": "adult",
       "country_id": "NG"
-    },
-    {
-      "id": "id-2",
-      "name": "sarah",
-      "gender": "female",
-      "age": 28,
-      "age_group": "adult",
-      "country_id": "US"
     }
   ]
 }
 ```
 
-### 4. Delete Profile
+### GET /api/profiles/search
 
-`DELETE /api/profiles/{id}`
+Natural language query parsing. No AI or LLM - rule-based only.
 
-Deletes a profile from the database.
+**Examples:**
 
-**Success Response:** `204 No Content` (no response body)
+```
+GET /api/profiles/search?q=young males from nigeria
+GET /api/profiles/search?q=females above 30
+GET /api/profiles/search?q=adult males from kenya
+GET /api/profiles/search?q=male and female teenagers above 17
+```
 
-**Error Response (404 Not Found):**
+**Response:** Same paginated format as GET /api/profiles.
+
+### POST /api/profiles
+
+Create a new profile.
+
+**Request:**
+
 ```json
 {
-  "status": "error",
-  "message": "Profile not found"
+  "name": "ella",
+  "gender": "female",
+  "gender_probability": 0.99,
+  "age": 46,
+  "age_group": "adult",
+  "country_id": "DRC",
+  "country_name": "Democratic Republic of Congo",
+  "country_probability": 0.85
 }
 ```
+
+**Response (201):**
+
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "uuid-v7",
+    "name": "ella",
+    "gender": "female",
+    "gender_probability": 0.99,
+    "age": 46,
+    "age_group": "adult",
+    "country_id": "DRC",
+    "country_name": "Democratic Republic of Congo",
+    "country_probability": 0.85,
+    "created_at": "2026-04-01T12:00:00Z"
+  }
+}
+```
+
+**Duplicate name (200):**
+
+```json
+{
+  "status": "success",
+  "message": "Profile already exists",
+  "data": { ... }
+}
+```
+
+### GET /api/profiles/{id}
+
+Get profile by UUID v7.
+
+**Response (200):** Same as POST response structure.
+
+### DELETE /api/profiles/{id}
+
+Delete a profile.
+
+**Response:** 204 No Content (no body)
+
+## Natural Language Mapping
+
+| Query Term             | Maps To                |
+| ---------------------- | ---------------------- |
+| young                  | min_age=16, max_age=24 |
+| male / men / boys      | gender=male            |
+| female / women / girls | gender=female          |
+| child / children / kid | age_group=child        |
+| teen / teenager        | age_group=teenager     |
+| adult                  | age_group=adult        |
+| senior / elder / old   | age_group=senior       |
+| above / over {age}     | min_age={age}          |
+| below / under {age}    | max_age={age}          |
+| from / in {country}    | country_id={code}      |
 
 ## Error Responses
 
@@ -176,61 +151,35 @@ All errors follow this structure:
 ```json
 {
   "status": "error",
-  "message": "<error message>"
+  "message": "Error message here"
 }
 ```
 
-### HTTP Status Codes
+| Status | Description                                            |
+| ------ | ------------------------------------------------------ |
+| 400    | Missing or empty parameter / Unable to interpret query |
+| 404    | Profile not found                                      |
+| 422    | Invalid parameter type                                 |
+| 500    | Internal server error                                  |
 
-| Status Code | Description |
-|-------------|-------------|
-| 200 | Success (GET, duplicate POST) |
-| 201 | Success (new profile created) |
-| 204 | Success (profile deleted) |
-| 400 | Bad Request - Missing or empty name |
-| 404 | Not Found - Profile does not exist |
-| 422 | Unprocessable Entity - Name is not a string |
-| 500 | Internal Server Error |
-| 502 | Bad Gateway - External API returned invalid response |
+## Database Schema
 
-### External API Error Responses (502)
+| Field               | Type       | Notes                          |
+| ------------------- | ---------- | ------------------------------ |
+| id                  | UUID v7    | Primary key                    |
+| name                | VARCHAR    | Unique, lowercase              |
+| gender              | VARCHAR    | male or female                 |
+| gender_probability  | FLOAT      | 0-1 confidence score           |
+| age                 | INT        | Exact age                      |
+| age_group           | VARCHAR    | child, teenager, adult, senior |
+| country_id          | VARCHAR(2) | ISO code (NG, US, etc.)        |
+| country_name        | VARCHAR    | Full country name              |
+| country_probability | FLOAT      | 0-1 confidence score           |
+| created_at          | TIMESTAMP  | UTC ISO 8601                   |
 
-```json
-{
-  "status": "502",
-  "message": "Genderize returned an invalid response"
-}
-```
-
-```json
-{
-  "status": "502",
-  "message": "Agify returned an invalid response"
-}
-```
-
-```json
-{
-  "status": "502",
-  "message": "Nationalize returned an invalid response"
-}
-```
-
-## Local Development
-
-### Prerequisites
-
-- Node.js (v18 or higher)
-- MongoDB Atlas account 
-- npm or yarn
-
-### Setup Instructions
+## Local Setup
 
 ```bash
-# Clone repository
-git clone https://github.com/SparkeBool/HNG14.git
-cd HNG14
-
 # Install dependencies
 npm install
 
@@ -238,113 +187,65 @@ npm install
 echo "MONGO_URI=your_mongodb_connection_string" > .env
 echo "PORT=3000" >> .env
 
+# Seed database with 2026 profiles
+npm run seed
+
 # Start development server
 npm run dev
 ```
 
-### Testing Locally
+## Testing Commands
 
 ```bash
-# Create a profile
-curl -X POST http://localhost:3000/api/profiles \
-  -H "Content-Type: application/json" \
-  -d '{"name": "john"}'
+# Filtering
+curl "https://hng-14-omega.vercel.app/api/profiles?gender=male&country_id=NG&min_age=25"
 
-# Get all profiles
-curl http://localhost:3000/api/profiles
+# Sorting
+curl "https://hng-14-omega.vercel.app/api/profiles?sort_by=age&order=desc"
 
-# Filter by gender
-curl http://localhost:3000/api/profiles?gender=male
+# Pagination
+curl "https://hng-14-omega.vercel.app/api/profiles?page=2&limit=10"
 
-# Filter by country
-curl http://localhost:3000/api/profiles?country_id=NG
+# Natural language search
+curl "https://hng-14-omega.vercel.app/profiles/search?q=young males from nigeria"
+curl "https://hng-14-omega.vercel.app/api/profiles/search?q=females above 30"
 
-# Filter by age group
-curl http://localhost:3000/api/profiles?age_group=adult
+# Get by ID
+curl "https://hng-14-omega.vercel.app/api/profiles/{id}"
 
-# Get by ID (replace with actual ID)
-curl http://localhost:3000/api/profiles/your-uuid-id
-
-# Delete profile
-curl -X DELETE http://localhost:3000/api/profiles/your-uuid-id
+# Delete
+curl -X DELETE "https://hng-14-omega.vercel.app/api/profiles/{id}"
 ```
 
-## Project Structure
+## Performance Features
 
-```
-profile-intelligence-api/
-├── models/
-│   └── Profile.js
-├── routes/
-│   └── profiles.js
-├── .env
-├── .gitignore
-├── index.js
-├── package.json
-├── vercel.json
-└── README.md
-```
+- MongoDB indexes on all filtered fields (gender, age_group, country_id, age, created_at, gender_probability, country_probability)
+- Pagination with skip/limit (max 50 per page)
+- Efficient queries with no full table scans
 
-## Technologies Used
+## Technologies
 
-- Node.js with Express.js
+- Node.js with Express
 - MongoDB with Mongoose ODM
-- Axios for external API calls
-- UUID v7 for unique identifiers
-- CORS for cross-origin support
-- Dotenv for environment variables
-- Deployed on Vercel
-
-## External APIs Integrated
-
-| API | Purpose | Endpoint |
-|-----|---------|----------|
-| Genderize.io | Gender prediction | `https://api.genderize.io/?name={name}` |
-| Agify.io | Age prediction | `https://api.agify.io/?name={name}` |
-| Nationalize.io | Nationality prediction | `https://api.nationalize.io/?name={name}` |
-
-## Processing Rules
-
-| Data | Source | Processing |
-|------|--------|------------|
-| gender | Genderize | Extracted directly |
-| gender_probability | Genderize | Extracted directly |
-| sample_size | Genderize | Renamed from `count` |
-| age | Agify | Extracted directly |
-| age_group | Calculated | 0-12: child, 13-19: teenager, 20-59: adult, 60+: senior |
-| country_id | Nationalize | Country with highest probability |
-| id | Generated | UUID v7 |
-| created_at | Generated | UTC ISO 8601 timestamp |
+- UUID v7 for identifiers
+- CORS enabled
+- Deployed on Vercel / Railway
 
 ## Deployment
 
-### Deploy to Vercel
+Deploy to Vercel, Railway, or Heroku. Render is not accepted.
+
+### Vercel Deployment
 
 ```bash
-# Install Vercel CLI
-npm install -g vercel
-
-# Deploy
 vercel --prod
-
-# Add environment variable in Vercel dashboard
-# Key: MONGODB_URI
-# Value: your MongoDB connection string
 ```
 
-### Environment Variables
+Add environment variable in Vercel dashboard:
 
-| Variable | Description |
-|----------|-------------|
-| `MONGO_URI` | MongoDB connection string |
-| `PORT` | Server port (default: 3000) |
+- Key: `MONGODB_URI`
+- Value: Your MongoDB connection string
 
-## License
-
-MIT
-
-## Author
-
-Alayo Shamsudeen
 ## Live API
-https://hng-14-omega.vercel.app/
+
+(https://hng-14-omega.vercel.app/)
