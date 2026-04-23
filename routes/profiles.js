@@ -16,6 +16,23 @@ function buildFilter(req) {
     min_country_probability
   } = req.query;
   
+  // VALIDATION - Return 422 for invalid parameters
+  if (gender && gender !== "male" && gender !== "female") {
+    throw new Error("Invalid query parameters");
+  }
+  
+  if (age_group && !["child", "teenager", "adult", "senior"].includes(age_group)) {
+    throw new Error("Invalid query parameters");
+  }
+  
+  if (min_age && isNaN(parseInt(min_age))) {
+    throw new Error("Invalid query parameters");
+  }
+  
+  if (max_age && isNaN(parseInt(max_age))) {
+    throw new Error("Invalid query parameters");
+  }
+  
   if (gender === "male" || gender === "female") {
     filter.gender = gender;
   }
@@ -58,13 +75,21 @@ function buildFilter(req) {
 // GET /api/profiles
 router.get("/", async (req, res) => {
   try {
-    const filter = buildFilter(req);
+    let filter;
+    try {
+      filter = buildFilter(req);
+    } catch (error) {
+      return res.status(422).json({
+        status: "error",
+        message: "Invalid query parameters"
+      });
+    }
     
-    // Handle sorting - MUST work for all three fields
+    // Handle sorting
     const sort_by = req.query.sort_by;
     const order = req.query.order;
     
-    let sortObj = { created_at: -1 }; // default
+    let sortObj = { created_at: -1 };
     
     if (sort_by === "age") {
       sortObj = { age: order === "asc" ? 1 : -1 };
@@ -74,7 +99,7 @@ router.get("/", async (req, res) => {
       sortObj = { gender_probability: order === "asc" ? 1 : -1 };
     }
     
-    // Handle pagination
+    // Pagination
     let page = parseInt(req.query.page);
     let limit = parseInt(req.query.limit);
     
@@ -96,7 +121,9 @@ router.get("/", async (req, res) => {
       gender: p.gender,
       age: p.age,
       age_group: p.age_group,
-      country_id: p.country_id
+      country_id: p.country_id,
+      created_at: p.created_at,
+      gender_probability: p.gender_probability
     }));
     
     res.status(200).json({
@@ -297,7 +324,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-// DELETE
+// DELETE - Fixed for PowerShell
 router.delete("/:id", async (req, res) => {
   try {
     const result = await Profile.findOneAndDelete({ id: req.params.id });
