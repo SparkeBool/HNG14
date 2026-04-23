@@ -4,84 +4,6 @@ import Profile from "../models/Profile.js";
 
 const router = express.Router();
 
-function parseNaturalLanguage(query) {
-  const filters = {};
-  
-  if (!query || query.trim() === "") {
-    return { error: "Unable to interpret query" };
-  }
-  
-  const q = query.toLowerCase().trim();
-  
-  if (q.includes("male") || q.includes("men") || q.includes("boys")) {
-    filters.gender = "male";
-  }
-  if (q.includes("female") || q.includes("women") || q.includes("girls")) {
-    filters.gender = "female";
-  }
-  
-  if (q.includes("child") || q.includes("children") || q.includes("kid")) {
-    filters.age_group = "child";
-  }
-  if (q.includes("teen") || q.includes("teenager")) {
-    filters.age_group = "teenager";
-  }
-  if (q.includes("adult")) {
-    filters.age_group = "adult";
-  }
-  if (q.includes("senior") || q.includes("elder") || q.includes("old")) {
-    filters.age_group = "senior";
-  }
-  
-  if (q.includes("young")) {
-    filters.min_age = 16;
-    filters.max_age = 24;
-  }
-  
-  const aboveMatch = q.match(/(?:above|over|older than)\s+(\d+)/);
-  if (aboveMatch) {
-    filters.min_age = parseInt(aboveMatch[1]);
-  }
-  
-  const belowMatch = q.match(/(?:below|under|younger than)\s+(\d+)/);
-  if (belowMatch) {
-    filters.max_age = parseInt(belowMatch[1]);
-  }
-  
-  const countryMap = {
-    "nigeria": "NG", "kenya": "KE", "south africa": "ZA",
-    "ghana": "GH", "angola": "AO", "egypt": "EG",
-    "morocco": "MA", "ethiopia": "ET", "tanzania": "TZ",
-    "uganda": "UG", "cameroon": "CM", "usa": "US",
-    "america": "US", "united states": "US", "uk": "GB",
-    "united kingdom": "GB", "canada": "CA"
-  };
-  
-  for (const [name, code] of Object.entries(countryMap)) {
-    if (q.includes(name)) {
-      filters.country_id = code;
-      break;
-    }
-  }
-  
-  const fromMatch = q.match(/(?:from|in)\s+([a-z\s]+)/);
-  if (fromMatch && !filters.country_id) {
-    const location = fromMatch[1].trim();
-    for (const [name, code] of Object.entries(countryMap)) {
-      if (location.includes(name)) {
-        filters.country_id = code;
-        break;
-      }
-    }
-  }
-  
-  if (Object.keys(filters).length === 0) {
-    return { error: "Unable to interpret query" };
-  }
-  
-  return { filters };
-}
-
 function buildFilter(req) {
   const filter = {};
   const {
@@ -94,11 +16,11 @@ function buildFilter(req) {
     min_country_probability
   } = req.query;
   
-  if (gender && (gender === "male" || gender === "female")) {
+  if (gender === "male" || gender === "female") {
     filter.gender = gender;
   }
   
-  if (age_group && ["child", "teenager", "adult", "senior"].includes(age_group)) {
+  if (age_group === "child" || age_group === "teenager" || age_group === "adult" || age_group === "senior") {
     filter.age_group = age_group;
   }
   
@@ -107,115 +29,52 @@ function buildFilter(req) {
   }
   
   if (min_age) {
-    const minAgeNum = parseInt(min_age);
-    if (!isNaN(minAgeNum)) {
-      filter.age = { ...filter.age, $gte: minAgeNum };
-    }
+    const val = parseInt(min_age);
+    if (!isNaN(val)) filter.age = { ...filter.age, $gte: val };
   }
   
   if (max_age) {
-    const maxAgeNum = parseInt(max_age);
-    if (!isNaN(maxAgeNum)) {
-      filter.age = { ...filter.age, $lte: maxAgeNum };
-    }
+    const val = parseInt(max_age);
+    if (!isNaN(val)) filter.age = { ...filter.age, $lte: val };
   }
   
   if (min_gender_probability) {
-    const minProbNum = parseFloat(min_gender_probability);
-    if (!isNaN(minProbNum) && minProbNum >= 0 && minProbNum <= 1) {
-      filter.gender_probability = { $gte: minProbNum };
+    const val = parseFloat(min_gender_probability);
+    if (!isNaN(val) && val >= 0 && val <= 1) {
+      filter.gender_probability = { $gte: val };
     }
   }
   
   if (min_country_probability) {
-    const minProbNum = parseFloat(min_country_probability);
-    if (!isNaN(minProbNum) && minProbNum >= 0 && minProbNum <= 1) {
-      filter.country_probability = { $gte: minProbNum };
+    const val = parseFloat(min_country_probability);
+    if (!isNaN(val) && val >= 0 && val <= 1) {
+      filter.country_probability = { $gte: val };
     }
   }
   
   return filter;
 }
 
-function buildSort(req) {
-  const { sort_by, order } = req.query;
-  
-  if (sort_by === "age") {
-    return { age: order === "asc" ? 1 : -1 };
-  }
-  if (sort_by === "gender_probability") {
-    return { gender_probability: order === "asc" ? 1 : -1 };
-  }
-  if (sort_by === "created_at") {
-    return { created_at: order === "asc" ? 1 : -1 };
-  }
-  
-  return { created_at: -1 };
-}
-
-router.post("/", async (req, res) => {
-  try {
-    const { name, gender, gender_probability, age, age_group, country_id, country_name, country_probability } = req.body;
-    
-    if (!name) {
-      return res.status(400).json({
-        status: "error",
-        message: "Name is required"
-      });
-    }
-    
-    if (typeof name !== "string") {
-      return res.status(422).json({
-        status: "error",
-        message: "Name must be a string"
-      });
-    }
-    
-    const normalizedName = name.toLowerCase().trim();
-    
-    const existing = await Profile.findOne({ name: normalizedName });
-    if (existing) {
-      return res.status(200).json({
-        status: "success",
-        message: "Profile already exists",
-        data: existing
-      });
-    }
-    
-    const profile = new Profile({
-      id: uuidv7(),
-      name: normalizedName,
-      gender,
-      gender_probability,
-      age,
-      age_group,
-      country_id,
-      country_name,
-      country_probability,
-      created_at: new Date()
-    });
-    
-    await profile.save();
-    
-    return res.status(201).json({
-      status: "success",
-      data: profile
-    });
-    
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({
-      status: "error",
-      message: "Internal server error"
-    });
-  }
-});
-
+// GET /api/profiles
 router.get("/", async (req, res) => {
   try {
     const filter = buildFilter(req);
-    const sort = buildSort(req);
     
+    // Handle sorting - MUST work for all three fields
+    const sort_by = req.query.sort_by;
+    const order = req.query.order;
+    
+    let sortObj = { created_at: -1 }; // default
+    
+    if (sort_by === "age") {
+      sortObj = { age: order === "asc" ? 1 : -1 };
+    } else if (sort_by === "created_at") {
+      sortObj = { created_at: order === "asc" ? 1 : -1 };
+    } else if (sort_by === "gender_probability") {
+      sortObj = { gender_probability: order === "asc" ? 1 : -1 };
+    }
+    
+    // Handle pagination
     let page = parseInt(req.query.page);
     let limit = parseInt(req.query.limit);
     
@@ -227,7 +86,7 @@ router.get("/", async (req, res) => {
     
     const total = await Profile.countDocuments(filter);
     const profiles = await Profile.find(filter)
-      .sort(sort)
+      .sort(sortObj)
       .skip(skip)
       .limit(limit);
     
@@ -240,7 +99,7 @@ router.get("/", async (req, res) => {
       country_id: p.country_id
     }));
     
-    return res.status(200).json({
+    res.status(200).json({
       status: "success",
       page: page,
       limit: limit,
@@ -250,16 +109,17 @@ router.get("/", async (req, res) => {
     
   } catch (error) {
     console.error(error);
-    return res.status(500).json({
+    res.status(500).json({
       status: "error",
       message: "Internal server error"
     });
   }
 });
 
+// Natural language search
 router.get("/search", async (req, res) => {
   try {
-    const { q, page, limit } = req.query;
+    const q = req.query.q;
     
     if (!q || q.trim() === "") {
       return res.status(400).json({
@@ -268,45 +128,82 @@ router.get("/search", async (req, res) => {
       });
     }
     
-    if (typeof q !== "string") {
-      return res.status(422).json({
-        status: "error",
-        message: "Invalid query parameters"
-      });
+    const query = q.toLowerCase().trim();
+    const filter = {};
+    
+    // Gender
+    if (query.includes("male") || query.includes("men") || query.includes("boys")) {
+      filter.gender = "male";
+    }
+    if (query.includes("female") || query.includes("women") || query.includes("girls")) {
+      filter.gender = "female";
     }
     
-    const parsed = parseNaturalLanguage(q);
+    // Age group
+    if (query.includes("child") || query.includes("children") || query.includes("kid")) {
+      filter.age_group = "child";
+    }
+    if (query.includes("teen") || query.includes("teenager")) {
+      filter.age_group = "teenager";
+    }
+    if (query.includes("adult")) {
+      filter.age_group = "adult";
+    }
+    if (query.includes("senior") || query.includes("elder") || query.includes("old")) {
+      filter.age_group = "senior";
+    }
     
-    if (parsed.error) {
+    // Young
+    if (query.includes("young")) {
+      filter.age = { $gte: 16, $lte: 24 };
+    }
+    
+    // Age above/below
+    const aboveMatch = query.match(/(?:above|over|older than)\s+(\d+)/);
+    if (aboveMatch) {
+      filter.age = { ...filter.age, $gte: parseInt(aboveMatch[1]) };
+    }
+    
+    const belowMatch = query.match(/(?:below|under|younger than)\s+(\d+)/);
+    if (belowMatch) {
+      filter.age = { ...filter.age, $lte: parseInt(belowMatch[1]) };
+    }
+    
+    // Country
+    const countries = {
+      "nigeria": "NG", "kenya": "KE", "south africa": "ZA",
+      "ghana": "GH", "angola": "AO", "egypt": "EG",
+      "usa": "US", "america": "US", "united states": "US",
+      "uk": "GB", "canada": "CA"
+    };
+    
+    for (const [name, code] of Object.entries(countries)) {
+      if (query.includes(name)) {
+        filter.country_id = code;
+        break;
+      }
+    }
+    
+    if (Object.keys(filter).length === 0) {
       return res.status(400).json({
         status: "error",
-        message: parsed.error
+        message: "Unable to interpret query"
       });
     }
     
-    const filter = {};
-    if (parsed.filters.gender) filter.gender = parsed.filters.gender;
-    if (parsed.filters.age_group) filter.age_group = parsed.filters.age_group;
-    if (parsed.filters.country_id) filter.country_id = parsed.filters.country_id;
+    // Pagination
+    let page = parseInt(req.query.page);
+    let limit = parseInt(req.query.limit);
+    if (isNaN(page) || page < 1) page = 1;
+    if (isNaN(limit) || limit < 1) limit = 10;
+    if (limit > 50) limit = 50;
     
-    if (parsed.filters.min_age || parsed.filters.max_age) {
-      filter.age = {};
-      if (parsed.filters.min_age) filter.age.$gte = parsed.filters.min_age;
-      if (parsed.filters.max_age) filter.age.$lte = parsed.filters.max_age;
-    }
-    
-    let queryPage = parseInt(page);
-    let queryLimit = parseInt(limit);
-    if (isNaN(queryPage) || queryPage < 1) queryPage = 1;
-    if (isNaN(queryLimit) || queryLimit < 1) queryLimit = 10;
-    if (queryLimit > 50) queryLimit = 50;
-    
-    const skip = (queryPage - 1) * queryLimit;
+    const skip = (page - 1) * limit;
     const total = await Profile.countDocuments(filter);
     const profiles = await Profile.find(filter)
       .sort({ created_at: -1 })
       .skip(skip)
-      .limit(queryLimit);
+      .limit(limit);
     
     const data = profiles.map(p => ({
       id: p.id,
@@ -317,66 +214,102 @@ router.get("/search", async (req, res) => {
       country_id: p.country_id
     }));
     
-    return res.status(200).json({
+    res.status(200).json({
       status: "success",
-      page: queryPage,
-      limit: queryLimit,
+      page: page,
+      limit: limit,
       total: total,
       data: data
     });
     
   } catch (error) {
     console.error(error);
-    return res.status(500).json({
+    res.status(500).json({
       status: "error",
       message: "Internal server error"
     });
   }
 });
 
+// GET by ID
 router.get("/:id", async (req, res) => {
   try {
-    const { id } = req.params;
-    const profile = await Profile.findOne({ id });
-    
+    const profile = await Profile.findOne({ id: req.params.id });
     if (!profile) {
       return res.status(404).json({
         status: "error",
         message: "Profile not found"
       });
     }
-    
-    return res.status(200).json({
+    res.status(200).json({
       status: "success",
       data: profile
     });
-    
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({
+    res.status(500).json({
       status: "error",
       message: "Internal server error"
     });
   }
 });
 
+// POST
+router.post("/", async (req, res) => {
+  try {
+    const { name } = req.body;
+    
+    if (!name) {
+      return res.status(400).json({
+        status: "error",
+        message: "Name is required"
+      });
+    }
+    
+    const normalizedName = name.toLowerCase().trim();
+    const existing = await Profile.findOne({ name: normalizedName });
+    
+    if (existing) {
+      return res.status(200).json({
+        status: "success",
+        message: "Profile already exists",
+        data: existing
+      });
+    }
+    
+    const profile = new Profile({
+      id: uuidv7(),
+      ...req.body,
+      name: normalizedName,
+      created_at: new Date()
+    });
+    
+    await profile.save();
+    
+    res.status(201).json({
+      status: "success",
+      data: profile
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: "Internal server error"
+    });
+  }
+});
+
+// DELETE
 router.delete("/:id", async (req, res) => {
   try {
-    const { id } = req.params;
-    const result = await Profile.findOneAndDelete({ id });
-    
+    const result = await Profile.findOneAndDelete({ id: req.params.id });
     if (!result) {
       return res.status(404).json({
         status: "error",
         message: "Profile not found"
       });
     }
-    
-    return res.status(204).send();
-    
+    res.status(204).send();
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({
+    res.status(500).json({
       status: "error",
       message: "Internal server error"
     });
