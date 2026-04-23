@@ -16,23 +16,32 @@ function buildFilter(req) {
     min_country_probability
   } = req.query;
   
-  // VALIDATION - Return 422 for invalid parameters
+  // Validation - Return error for invalid parameters
   if (gender && gender !== "male" && gender !== "female") {
-    throw new Error("Invalid query parameters");
+    return { error: "Invalid query parameters" };
   }
   
   if (age_group && !["child", "teenager", "adult", "senior"].includes(age_group)) {
-    throw new Error("Invalid query parameters");
+    return { error: "Invalid query parameters" };
   }
   
   if (min_age && isNaN(parseInt(min_age))) {
-    throw new Error("Invalid query parameters");
+    return { error: "Invalid query parameters" };
   }
   
   if (max_age && isNaN(parseInt(max_age))) {
-    throw new Error("Invalid query parameters");
+    return { error: "Invalid query parameters" };
   }
   
+  if (min_gender_probability && isNaN(parseFloat(min_gender_probability))) {
+    return { error: "Invalid query parameters" };
+  }
+  
+  if (min_country_probability && isNaN(parseFloat(min_country_probability))) {
+    return { error: "Invalid query parameters" };
+  }
+  
+  // Apply filters
   if (gender === "male" || gender === "female") {
     filter.gender = gender;
   }
@@ -47,12 +56,16 @@ function buildFilter(req) {
   
   if (min_age) {
     const val = parseInt(min_age);
-    if (!isNaN(val)) filter.age = { ...filter.age, $gte: val };
+    if (!isNaN(val)) {
+      filter.age = { ...filter.age, $gte: val };
+    }
   }
   
   if (max_age) {
     const val = parseInt(max_age);
-    if (!isNaN(val)) filter.age = { ...filter.age, $lte: val };
+    if (!isNaN(val)) {
+      filter.age = { ...filter.age, $lte: val };
+    }
   }
   
   if (min_gender_probability) {
@@ -69,23 +82,24 @@ function buildFilter(req) {
     }
   }
   
-  return filter;
+  return { filter };
 }
 
-// GET /api/profiles
+// GET /api/profiles - Filtering, Sorting, Pagination
 router.get("/", async (req, res) => {
   try {
-    let filter;
-    try {
-      filter = buildFilter(req);
-    } catch (error) {
+    const result = buildFilter(req);
+    
+    if (result.error) {
       return res.status(422).json({
         status: "error",
-        message: "Invalid query parameters"
+        message: result.error
       });
     }
     
-    // Handle sorting
+    const filter = result.filter;
+    
+    // Sorting
     const sort_by = req.query.sort_by;
     const order = req.query.order;
     
@@ -126,7 +140,8 @@ router.get("/", async (req, res) => {
       gender_probability: p.gender_probability
     }));
     
-    res.status(200).json({
+    // Pagination envelope - all fields must be numbers
+    return res.status(200).json({
       status: "success",
       page: page,
       limit: limit,
@@ -136,14 +151,14 @@ router.get("/", async (req, res) => {
     
   } catch (error) {
     console.error(error);
-    res.status(500).json({
+    return res.status(500).json({
       status: "error",
       message: "Internal server error"
     });
   }
 });
 
-// Natural language search
+// GET /api/profiles/search - Natural Language Query
 router.get("/search", async (req, res) => {
   try {
     const q = req.query.q;
@@ -158,59 +173,83 @@ router.get("/search", async (req, res) => {
     const query = q.toLowerCase().trim();
     const filter = {};
     
-    // Gender
-    if (query.includes("male") || query.includes("men") || query.includes("boys")) {
+    // Gender detection
+    if (query.includes("male") || query.includes("men") || query.includes("boys") || query.includes("guys")) {
       filter.gender = "male";
     }
-    if (query.includes("female") || query.includes("women") || query.includes("girls")) {
+    if (query.includes("female") || query.includes("women") || query.includes("girls") || query.includes("ladies")) {
       filter.gender = "female";
     }
     
-    // Age group
-    if (query.includes("child") || query.includes("children") || query.includes("kid")) {
+    // Age group detection
+    if (query.includes("child") || query.includes("children") || query.includes("kid") || query.includes("kids")) {
       filter.age_group = "child";
     }
-    if (query.includes("teen") || query.includes("teenager")) {
+    if (query.includes("teen") || query.includes("teenager") || query.includes("adolescent") || query.includes("youth")) {
       filter.age_group = "teenager";
     }
-    if (query.includes("adult")) {
+    if (query.includes("adult") || query.includes("grown")) {
       filter.age_group = "adult";
     }
-    if (query.includes("senior") || query.includes("elder") || query.includes("old")) {
+    if (query.includes("senior") || query.includes("elder") || query.includes("old") || query.includes("aged")) {
       filter.age_group = "senior";
     }
     
-    // Young
+    // Young keyword (ages 16-24)
     if (query.includes("young")) {
       filter.age = { $gte: 16, $lte: 24 };
     }
     
-    // Age above/below
-    const aboveMatch = query.match(/(?:above|over|older than)\s+(\d+)/);
+    // Age above detection
+    const aboveMatch = query.match(/(?:above|over|older than|greater than)\s+(\d+)/);
     if (aboveMatch) {
       filter.age = { ...filter.age, $gte: parseInt(aboveMatch[1]) };
     }
     
-    const belowMatch = query.match(/(?:below|under|younger than)\s+(\d+)/);
+    // Age below detection
+    const belowMatch = query.match(/(?:below|under|younger than|less than)\s+(\d+)/);
     if (belowMatch) {
       filter.age = { ...filter.age, $lte: parseInt(belowMatch[1]) };
     }
     
-    // Country
-    const countries = {
-      "nigeria": "NG", "kenya": "KE", "south africa": "ZA",
-      "ghana": "GH", "angola": "AO", "egypt": "EG",
+    // Country detection
+    const countryMap = {
+      "nigeria": "NG", "ngeria": "NG", "naija": "NG",
+      "kenya": "KE", "kenyan": "KE",
+      "south africa": "ZA", "south african": "ZA",
+      "ghana": "GH", "ghanian": "GH",
+      "angola": "AO", "angolan": "AO",
+      "egypt": "EG", "egyptian": "EG",
+      "morocco": "MA", "moroccan": "MA",
+      "ethiopia": "ET", "ethiopian": "ET",
+      "tanzania": "TZ", "tanzanian": "TZ",
+      "uganda": "UG", "ugandan": "UG",
+      "cameroon": "CM", "cameroonian": "CM",
       "usa": "US", "america": "US", "united states": "US",
-      "uk": "GB", "canada": "CA"
+      "uk": "GB", "united kingdom": "GB", "britain": "GB",
+      "canada": "CA", "canadian": "CA"
     };
     
-    for (const [name, code] of Object.entries(countries)) {
-      if (query.includes(name)) {
-        filter.country_id = code;
+    for (const [countryName, countryCode] of Object.entries(countryMap)) {
+      if (query.includes(countryName)) {
+        filter.country_id = countryCode;
         break;
       }
     }
     
+    // From/in detection for country
+    const fromMatch = query.match(/(?:from|in)\s+([a-z\s]+)/);
+    if (fromMatch && !filter.country_id) {
+      const location = fromMatch[1].trim();
+      for (const [countryName, countryCode] of Object.entries(countryMap)) {
+        if (location.includes(countryName)) {
+          filter.country_id = countryCode;
+          break;
+        }
+      }
+    }
+    
+    // If no filters found, return error
     if (Object.keys(filter).length === 0) {
       return res.status(400).json({
         status: "error",
@@ -218,7 +257,7 @@ router.get("/search", async (req, res) => {
       });
     }
     
-    // Pagination
+    // Pagination for search results
     let page = parseInt(req.query.page);
     let limit = parseInt(req.query.limit);
     if (isNaN(page) || page < 1) page = 1;
@@ -241,7 +280,7 @@ router.get("/search", async (req, res) => {
       country_id: p.country_id
     }));
     
-    res.status(200).json({
+    return res.status(200).json({
       status: "success",
       page: page,
       limit: limit,
@@ -251,36 +290,40 @@ router.get("/search", async (req, res) => {
     
   } catch (error) {
     console.error(error);
-    res.status(500).json({
+    return res.status(500).json({
       status: "error",
       message: "Internal server error"
     });
   }
 });
 
-// GET by ID
+// GET /api/profiles/:id - Get by ID
 router.get("/:id", async (req, res) => {
   try {
     const profile = await Profile.findOne({ id: req.params.id });
+    
     if (!profile) {
       return res.status(404).json({
         status: "error",
         message: "Profile not found"
       });
     }
-    res.status(200).json({
+    
+    return res.status(200).json({
       status: "success",
       data: profile
     });
+    
   } catch (error) {
-    res.status(500).json({
+    console.error(error);
+    return res.status(500).json({
       status: "error",
       message: "Internal server error"
     });
   }
 });
 
-// POST
+// POST /api/profiles - Create profile
 router.post("/", async (req, res) => {
   try {
     const { name } = req.body;
@@ -292,7 +335,16 @@ router.post("/", async (req, res) => {
       });
     }
     
+    if (typeof name !== "string") {
+      return res.status(422).json({
+        status: "error",
+        message: "Name must be a string"
+      });
+    }
+    
     const normalizedName = name.toLowerCase().trim();
+    
+    // Check for existing profile (idempotency)
     const existing = await Profile.findOne({ name: normalizedName });
     
     if (existing) {
@@ -303,40 +355,53 @@ router.post("/", async (req, res) => {
       });
     }
     
+    // Create new profile
     const profile = new Profile({
       id: uuidv7(),
-      ...req.body,
       name: normalizedName,
+      gender: req.body.gender,
+      gender_probability: req.body.gender_probability,
+      age: req.body.age,
+      age_group: req.body.age_group,
+      country_id: req.body.country_id,
+      country_name: req.body.country_name,
+      country_probability: req.body.country_probability,
       created_at: new Date()
     });
     
     await profile.save();
     
-    res.status(201).json({
+    return res.status(201).json({
       status: "success",
       data: profile
     });
+    
   } catch (error) {
-    res.status(500).json({
+    console.error(error);
+    return res.status(500).json({
       status: "error",
       message: "Internal server error"
     });
   }
 });
 
-// DELETE - Fixed for PowerShell
+// DELETE /api/profiles/:id - Delete profile
 router.delete("/:id", async (req, res) => {
   try {
     const result = await Profile.findOneAndDelete({ id: req.params.id });
+    
     if (!result) {
       return res.status(404).json({
         status: "error",
         message: "Profile not found"
       });
     }
-    res.status(204).send();
+    
+    return res.status(204).send();
+    
   } catch (error) {
-    res.status(500).json({
+    console.error(error);
+    return res.status(500).json({
       status: "error",
       message: "Internal server error"
     });
