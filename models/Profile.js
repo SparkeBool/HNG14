@@ -47,7 +47,6 @@ const profileSchema = new mongoose.Schema({
   }
 });
 
-// INDEXES for performance
 profileSchema.index({ gender: 1 });
 profileSchema.index({ age_group: 1 });
 profileSchema.index({ country_id: 1 });
